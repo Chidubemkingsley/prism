@@ -1,0 +1,18 @@
+[package]
+name = "prism-caller"
+version = "0.1.0"
+edition = "2021"
+publish = false
+license = "MIT"
+description = "Companion Soroban contract exercising nested calls into Prism showcase"
+
+[lib]
+crate-type = ["lib", "cdylib"]
+doctest = false
+
+[dependencies]
+soroban-sdk = { workspace = true }
+prism-showcase = { path = "../showcase" }
+
+[dev-dependencies]
+soroban-sdk = { workspace = true, features = ["testutils"] }

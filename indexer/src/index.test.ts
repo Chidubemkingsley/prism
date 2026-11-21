@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { backoffDelay, commitPage, healthReport, seedLastLedger } from "./index.js";
+import { backoffDelay, commitPage, healthReport, pruneStorageHistory, seedLastLedger } from "./index.js";
 
 describe("backoffDelay", () => {
   it("doubles the delay for each consecutive failure", () => {
@@ -125,5 +125,31 @@ describe("commitPage", () => {
     ).rejects.toThrow("injected failure");
     expect(committed.gaps).toEqual([]);
     expect(committed.cursor).toEqual({ lastLedger: 100, paginationCursor: null });
+  });
+});
+
+
+describe("pruneStorageHistory", () => {
+  it("does not prune before the retention window has elapsed", async () => {
+    const execute = async () => { throw new Error("should not query"); };
+    const client = { $executeRaw: execute } as unknown as Parameters<typeof pruneStorageHistory>[2];
+    await expect(pruneStorageHistory(50, 100, client)).resolves.toBe(0);
+  });
+
+  it("uses a bounded deletion that excludes the latest observation for each key", async () => {
+    let statement = "";
+    let cutoff: unknown;
+    const execute = async (strings: TemplateStringsArray, ...values: unknown[]) => {
+      statement = strings.join("?");
+      cutoff = values[0];
+      return 7;
+    };
+    const client = { $executeRaw: execute } as unknown as Parameters<typeof pruneStorageHistory>[2];
+    await expect(pruneStorageHistory(200, 50, client)).resolves.toBe(7);
+    expect(cutoff).toBe(150);
+    expect(statement).toContain("LIMIT 1000");
+    expect(statement).toContain("EXISTS");
+    expect(statement).toContain('newer."keyDisplay" = older."keyDisplay"');
+    expect(statement).toContain("newer.ledger > older.ledger");
   });
 });

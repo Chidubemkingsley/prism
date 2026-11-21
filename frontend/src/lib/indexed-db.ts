@@ -191,6 +191,7 @@ export async function getIndexedEvents(
 }
 
 export interface IndexedStorageEntry {
+  liveUntilLedger: number | null;
   durability: string;
   keyDisplay: string;
   valueDisplay: string;
@@ -206,11 +207,18 @@ export interface IndexedStorageEntry {
 export async function getIndexedStorageEntries(contractId: string): Promise<IndexedStorageEntry[]> {
   if (!isIndexerConfigured()) return [];
   const { rows } = await getPool().query(
-    `SELECT DISTINCT ON (durability, "keyXdr")
-       durability, "keyDisplay", "valueDisplay", ledger, "changeType"
-     FROM "StorageChange"
-     WHERE "contractId" = $1 AND "changeType" != 'state'
-     ORDER BY durability, "keyXdr", ledger DESC`,
+    `SELECT latest.*, ttl."liveUntilLedger" FROM (
+       SELECT DISTINCT ON (durability, "keyDisplay")
+         durability, "keyDisplay", "valueDisplay", ledger, "changeType", "keyHash"
+       FROM "StorageChange"
+       WHERE "contractId" = $1 AND "changeType" != 'state'
+       ORDER BY durability, "keyDisplay", ledger DESC, id DESC
+     ) latest
+     LEFT JOIN LATERAL (
+       SELECT "liveUntilLedger" FROM "TtlChange"
+       WHERE "keyHash" = latest."keyHash"
+       ORDER BY ledger DESC, id DESC LIMIT 1
+     ) ttl ON TRUE`,
     [contractId]
   );
   return rows
@@ -220,6 +228,7 @@ export async function getIndexedStorageEntries(contractId: string): Promise<Inde
       keyDisplay: r.keyDisplay,
       valueDisplay: r.valueDisplay,
       ledger: r.ledger,
+      liveUntilLedger: r.liveUntilLedger ?? null,
     }));
 }
 

@@ -38,6 +38,20 @@ stellar contract invoke --id "$CONTRACT_ID" --source "$SOURCE_ACCOUNT" --network
 stellar contract invoke --id "$CONTRACT_ID" --source "$SOURCE_ACCOUNT" --network "$NETWORK" \
   -- start_session --who "$ADMIN_ADDRESS" --ledgers 200
 
+echo "Deploying companion caller contract..."
+CALLER_ID="$(stellar contract deploy \
+  --wasm target/wasm32v1-none/release/prism_caller.wasm \
+  --source "$SOURCE_ACCOUNT" \
+  --network "$NETWORK")"
+
+# Exercise a nested invocation and an auth-protected nested note write.
+stellar contract invoke --id "$CALLER_ID" --source "$SOURCE_ACCOUNT" --network "$NETWORK" \
+  -- bump_showcase --showcase "$CONTRACT_ID" --by 3
+stellar contract invoke --id "$CALLER_ID" --source "$SOURCE_ACCOUNT" --network "$NETWORK" \
+  -- write_showcase_note --showcase "$CONTRACT_ID" --author "$ADMIN_ADDRESS" --name nested --body "written via caller"
+
+echo "Caller contract ID: $CALLER_ID"
+
 echo
 echo "Contract ID: $CONTRACT_ID"
 echo "Prism URL: ${PRISM_URL%/}/contract/$CONTRACT_ID"

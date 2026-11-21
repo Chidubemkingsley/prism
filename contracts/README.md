@@ -10,7 +10,8 @@ admin-only upgrade.
 
 | Crate | What it exercises |
 | --- | --- |
-| [`showcase`](./showcase) | Instance, persistent, and temporary storage; typed map, vec, and single-value events; compound ABI values; a deliberate error; and admin-only Wasm upgrades. |
+| [`showcase`](./showcase) | Instance, persistent, and temporary storage; typed map, vec, and single-value events; compound ABI values; and a deliberate error. |
+| [`caller`](./caller) | Nested cross-contract calls into showcase, including forwarded author authorization. |
 
 ### What `showcase` exercises
 
@@ -242,86 +243,12 @@ Expected output (this command intentionally exits non-zero):
 error: HostError: Error(Contract, #5)
 ```
 
-## Upgrade recipe
+## Companion caller contract
 
-Upgrading replaces the contract's code while keeping its address and storage,
-which is what Prism's `__wasm_hash__` tracking watches for. This continues
-from the manual recipe above, with `CONTRACT_ID` set and `alice` as admin.
-
-Build a second Wasm with different bytes. The `release-with-logs` profile keeps
-debug assertions, so it produces a different hash without any code change (any
-real code change works too):
-
-```bash
-stellar contract build --profile release-with-logs
-```
-
-Example output:
-
-```text
-ℹ️  Build Complete
-```
-
-Upload it. Uploading installs the code on the network without deploying a new
-contract, and prints its hash:
-
-```bash
-stellar contract upload \
-  --wasm target/wasm32v1-none/release-with-logs/prism_showcase.wasm \
-  --source alice --network testnet
-```
-
-Example output:
-
-```text
-6a1c3b0f9e5d2c4b8a7f6e5d4c3b2a1908f7e6d5c4b3a29180f7e6d5c4b3a291
-```
-
-Save that value as `NEW_WASM_HASH`, then upgrade as the admin:
-
-```bash
-stellar contract invoke --id "$CONTRACT_ID" --source alice --network testnet \
-  -- upgrade --new_wasm_hash "$NEW_WASM_HASH"
-```
-
-Example output:
-
-```text
-null
-```
-
-The call emits an `upgraded` contract event with the new hash, and the
-network records its own system event for the executable change. Check that the
-contract now runs the new code: the SHA-256 of the fetched Wasm is the
-contract's Wasm hash.
-
-```bash
-stellar contract fetch --id "$CONTRACT_ID" --network testnet --out-file current.wasm
-shasum -a 256 current.wasm
-```
-
-Example output:
-
-```text
-6a1c3b0f9e5d2c4b8a7f6e5d4c3b2a1908f7e6d5c4b3a29180f7e6d5c4b3a291  current.wasm
-```
-
-Any other account is refused, because `upgrade` requires the admin's
-authorization:
-
-```bash
-stellar keys generate --global bob --network testnet --fund
-stellar contract invoke --id "$CONTRACT_ID" --source bob --network testnet \
-  -- upgrade --new_wasm_hash "$NEW_WASM_HASH"
-```
-
-Expected output (the invoke intentionally exits non-zero; wording varies by CLI
-version):
-
-```text
-error: HostError: Error(Auth, InvalidAction)
-```
-
-Upgrading to a hash that was never uploaded also fails, and the contract keeps
-its current code. Once the indexer has caught up, the contract page at
-`/contract/<CONTRACT_ID>` shows the new Wasm hash.
+The `caller/` crate exposes `bump_showcase(showcase, by)` and
+`write_showcase_note(showcase, author, name, body)`. The second entrypoint
+invokes the showcase's `put_note`, which requires the author's signature;
+this allows Prism to inspect nested authorization trees. Run `cargo test`
+from `contracts/` to exercise both successful nested calls and rejection of
+an unauthorized nested write. The testnet deploy script deploys both contracts,
+invokes the companion, and prints the caller's contract ID.
