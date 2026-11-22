@@ -1,4 +1,4 @@
-import { Account, Address, BASE_FEE, Contract, Keypair, TransactionBuilder, rpc, xdr } from "@stellar/stellar-sdk";
+import { Account, BASE_FEE, Contract, Keypair, TransactionBuilder, rpc, xdr } from "@stellar/stellar-sdk";
 import type {
   ContractEvent,
   ContractInfo,
@@ -7,13 +7,17 @@ import type {
   StorageEntry,
 } from "@/types";
 import {
+  coerceArgInput,
   decodeInvocation,
   parseContractEvents,
   parseContractSpec,
   parseContractTypes,
   scValToDisplay,
+  type ParsedTypeDef,
 } from "./xdr";
 import { config } from "./config";
+// Re-exported for callers that already import key helpers from this module.
+export { SIMPLE_STORAGE_KEY_KINDS, type SimpleStorageKeyKind } from "./storage-key-validation";
 import type { HistoryPage, PageRequest } from "./history-cursor";
 import { EVENT_PAGE_SIZE, INVOCATION_PAGE_SIZE } from "./contract-lists";
 import { cache } from "./request-cache";
@@ -128,6 +132,7 @@ export async function lookupStorageEntry(
       key: scValToDisplay(key),
       value: scValToDisplay(entry.val.contractData().val()),
       durability,
+      liveUntilLedgerSeq: entry.liveUntilLedgerSeq,
     };
   } catch {
     return null;
@@ -141,6 +146,7 @@ export async function getFullStorageEntries(contractId: string): Promise<Storage
     key: e.keyDisplay,
     value: e.valueDisplay,
     durability: e.durability as StorageEntry["durability"],
+    liveUntilLedgerSeq: e.liveUntilLedger ?? undefined,
   }));
 }
 
